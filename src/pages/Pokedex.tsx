@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
 import PokemonCard from '../components/PokemonCard'
 import { getPokemons, getPokemonsByType, extractIdFromUrl, getPokemon } from '../api/pokemons'
 import { ALL_TYPES, getTypeColor } from '../constants/typeColors'
@@ -16,7 +16,6 @@ interface CardData {
   sprite: string
 }
 
-// Carga el detalle de un Pokémon por nombre/id y renderiza su card
 function PokemonCardLoader({ nameOrId }: { nameOrId: string | number }) {
   const { data, isLoading } = useQuery({
     queryKey: ['pokemon', String(nameOrId)],
@@ -42,11 +41,10 @@ export default function Pokedex() {
   const [offset, setOffset] = useState(0)
   const [allCards, setAllCards] = useState<CardData[]>([])
   const [search, setSearch] = useState('')
-  const [selectedType, setSelectedType] = useState('')
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [selectedCategory, setSelectedCategory] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Todos los nombres (una sola llamada al iniciar) — para búsqueda local
   const allNamesQuery = useQuery({
     queryKey: ['all-pokemon-names'],
     queryFn: () => getPokemons(0, 1025),
@@ -54,24 +52,24 @@ export default function Pokedex() {
   })
   const allNames: PokemonListItem[] = allNamesQuery.data?.results ?? []
 
-  // Tipo filter
-  const typeQuery = useQuery({
-    queryKey: ['type', selectedType],
-    queryFn: () => getPokemonsByType(selectedType),
-    enabled: !!selectedType,
-    staleTime: Infinity,
+  // Fetch paralelo para cada tipo seleccionado
+  const typeQueries = useQueries({
+    queries: selectedTypes.map(type => ({
+      queryKey: ['type', type],
+      queryFn: () => getPokemonsByType(type),
+      staleTime: Infinity,
+    })),
   })
 
-  // Carga paginada (modo normal sin filtros)
   const listQuery = useQuery({
     queryKey: ['pokemons', offset],
     queryFn: () => getPokemons(offset, LIMIT),
     staleTime: Infinity,
-    enabled: !search && !selectedType && !selectedCategory,
+    enabled: !search && selectedTypes.length === 0 && !selectedCategory,
   })
 
   useEffect(() => {
-    if (!listQuery.data || search || selectedType || selectedCategory) return
+    if (!listQuery.data || search || selectedTypes.length > 0 || selectedCategory) return
     setLoading(true)
     const items: PokemonListItem[] = listQuery.data.results
     Promise.all(items.map((item) => getPokemon(extractIdFromUrl(item.url))))
@@ -89,70 +87,118 @@ export default function Pokedex() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [listQuery.data, search, selectedType, selectedCategory])
+  }, [listQuery.data, search, selectedTypes, selectedCategory])
 
-  // IDs del filtro de categoría activo
-  const categoryIds = useMemo(() => {
-    if (!selectedCategory) return []
-    if (selectedCategory === 'legendary') return [...LEGENDARY_IDS]
-    if (selectedCategory === 'mythical') return [...MYTHICAL_IDS]
+  // IDs del filtro de categoría
+  const categoryIdSet = useMemo(() => {
+    if (!selectedCategory) return null
+    if (selectedCategory === 'legendary') return LEGENDARY_IDS
+    if (selectedCategory === 'mythical') return MYTHICAL_IDS
     const range = GENERATION_RANGES[selectedCategory]
     if (range) {
       const [from, to] = range
-      return Array.from({ length: to - from + 1 }, (_, i) => from + i)
+      const ids = new Set<number>()
+      for (let i = from; i <= to; i++) ids.add(i)
+      return ids
     }
-    return []
+    return null
   }, [selectedCategory])
 
-  // Resultados de búsqueda local — filtra por nombre (letra a letra) o por número
+  // IDs por intersección de tipos seleccionados
+  const typeIdSets = useMemo(() => {
+    return typeQueries
+      .filter(q => !!q.data)
+      .map(q => new Set(
+        (q.data as Array<{ name: string; url: string }>)
+          .map(item => extractIdFromUrl(item.url))
+          .filter(id => id >= 1 && id <= 1025)
+      ))
+  }, [typeQueries])
+
+  const typesLoading = typeQueries.some(q => q.isLoading)
+
+  // IDs combinados: intersección de tipos ∩ categoría
+  const filteredIds = useMemo(() => {
+    const hasCategory = categoryIdSet !== null
+    const hasTypes = typeIdSets.length > 0
+
+    if (!hasCategory && !hasTypes) return []
+
+    let result: Set<number> | null = null
+
+    // Intersección de todos los tipos seleccionados
+    if (hasTypes) {
+      for (const set of typeIdSets) {
+        if (result === null) {
+          result = new Set(set)
+        } else {
+          result = new Set([...result].filter(id => set.has(id)))
+        }
+      }
+    }
+
+    // Intersección con categoría
+    if (hasCategory && categoryIdSet) {
+      if (result === null) {
+        result = new Set(categoryIdSet)
+      } else {
+        result = new Set([...result].filter(id => categoryIdSet.has(id)))
+      }
+    }
+
+    return result ? [...result].sort((a, b) => a - b) : []
+  }, [categoryIdSet, typeIdSets])
+
+  // Búsqueda local
   const searchResults = useMemo(() => {
     if (!search) return []
     const q = search.toLowerCase().trim()
     const isNumber = /^\d+$/.test(q)
     return allNames
       .filter(p => {
-        if (isNumber) {
-          const id = extractIdFromUrl(p.url)
-          return String(id).startsWith(q)
-        }
+        if (isNumber) return String(extractIdFromUrl(p.url)).startsWith(q)
         return p.name.includes(q)
       })
       .slice(0, 40)
   }, [search, allNames])
 
-  // IDs para filtro de tipo (máx 80)
-  const typeIds = useMemo(() => {
-    if (!selectedType || !typeQuery.data) return []
-    return (typeQuery.data as Array<{ name: string; url: string }>)
-      .slice(0, 80)
-      .map(item => extractIdFromUrl(item.url))
-  }, [selectedType, typeQuery.data])
-
-  // Modo activo
-  const mode = search ? 'search'
-    : selectedCategory ? 'category'
-    : selectedType ? 'type'
+  const mode: 'search' | 'filtered' | 'paginated' = search
+    ? 'search'
+    : (selectedTypes.length > 0 || selectedCategory)
+    ? 'filtered'
     : 'paginated'
+
+  const hasFilters = search || selectedTypes.length > 0 || selectedCategory
 
   const handleClearFilters = () => {
     setSearch('')
-    setSelectedType('')
+    setSelectedTypes([])
     setSelectedCategory('')
   }
 
   const handleTypeToggle = (type: string) => {
-    setSelectedType(prev => prev === type ? '' : type)
     setSearch('')
-    setSelectedCategory('')
+    setSelectedTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    )
   }
 
   const handleCategoryToggle = (cat: string) => {
-    setSelectedCategory(prev => prev === cat ? '' : cat)
     setSearch('')
-    setSelectedType('')
+    setSelectedCategory(prev => prev === cat ? '' : cat)
   }
 
-  const hasFilters = search || selectedType || selectedCategory
+  const filterDescription = useMemo(() => {
+    const parts: string[] = []
+    if (selectedCategory) {
+      const label = selectedCategory === 'legendary' ? 'Legendario'
+        : selectedCategory === 'mythical' ? 'Mítico'
+        : GENERATION_LABELS[selectedCategory] ?? selectedCategory
+      parts.push(label)
+    }
+    if (selectedTypes.length > 0) parts.push(selectedTypes.join(' + '))
+    return parts.join(' · ')
+  }, [selectedCategory, selectedTypes])
 
   return (
     <div>
@@ -163,13 +209,13 @@ export default function Pokedex() {
         Pokédex <span className="text-gamer-purple-light">completo</span>
       </motion.h1>
 
-      {/* Búsqueda en tiempo real */}
+      {/* Búsqueda */}
       <div className="relative mb-4">
         <input
           type="text"
           value={search}
-          onChange={e => { setSearch(e.target.value); setSelectedType(''); setSelectedCategory('') }}
-          placeholder="🔍 Buscar Pokémon por nombre..."
+          onChange={e => { setSearch(e.target.value); setSelectedTypes([]); setSelectedCategory('') }}
+          placeholder="🔍 Buscar por nombre o número..."
           className="w-full bg-white/5 border border-gamer-purple/30 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-gamer-purple/60 transition-colors"
         />
         {search && (
@@ -179,11 +225,10 @@ export default function Pokedex() {
         )}
       </div>
 
-      {/* Filtros de categoría */}
+      {/* Categorías */}
       <div className="mb-4">
         <p className="text-xs text-slate-500 font-mono uppercase tracking-widest mb-2">Categoría</p>
         <div className="flex flex-wrap gap-2">
-          {/* Especiales */}
           {[
             { key: 'legendary', label: '⭐ Legendario', color: '#f7d02c' },
             { key: 'mythical', label: '✨ Mítico', color: '#f95587' },
@@ -201,8 +246,6 @@ export default function Pokedex() {
               {label}
             </button>
           ))}
-
-          {/* Generaciones */}
           {Object.entries(GENERATION_LABELS).map(([key, label]) => (
             <button
               key={key}
@@ -220,34 +263,44 @@ export default function Pokedex() {
         </div>
       </div>
 
-      {/* Filtros de tipo */}
+      {/* Tipos — multi-select */}
       <div className="mb-6">
-        <p className="text-xs text-slate-500 font-mono uppercase tracking-widest mb-2">Tipo</p>
+        <p className="text-xs text-slate-500 font-mono uppercase tracking-widest mb-2">
+          Tipo <span className="normal-case text-slate-600">(puedes elegir varios)</span>
+        </p>
         <div className="flex flex-wrap gap-2">
-          {ALL_TYPES.map(type => (
-            <button
-              key={type}
-              onClick={() => handleTypeToggle(type)}
-              className="text-xs px-3 py-1 rounded-full font-mono transition-all capitalize"
-              style={{
-                background: selectedType === type ? `${getTypeColor(type)}55` : `${getTypeColor(type)}22`,
-                color: getTypeColor(type),
-                border: `1px solid ${getTypeColor(type)}${selectedType === type ? 'aa' : '44'}`,
-              }}
-            >
-              {type}
-            </button>
-          ))}
+          {ALL_TYPES.map(type => {
+            const active = selectedTypes.includes(type)
+            const color = getTypeColor(type)
+            return (
+              <button
+                key={type}
+                onClick={() => handleTypeToggle(type)}
+                className="text-xs px-3 py-1 rounded-full font-mono transition-all capitalize"
+                style={{
+                  background: active ? `${color}55` : `${color}22`,
+                  color,
+                  border: `1px solid ${color}${active ? 'cc' : '44'}`,
+                  boxShadow: active ? `0 0 8px ${color}44` : 'none',
+                }}
+              >
+                {active && '✓ '}{type}
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {/* Limpiar filtros */}
+      {/* Info de filtros activos */}
       {hasFilters && (
         <div className="flex items-center justify-between mb-4">
           <p className="text-xs text-slate-400 font-mono">
-            {mode === 'search' && `Mostrando resultados para "${search}"`}
-            {mode === 'category' && `Categoría: ${selectedCategory === 'legendary' ? 'Legendario' : selectedCategory === 'mythical' ? 'Mítico' : GENERATION_LABELS[selectedCategory]}`}
-            {mode === 'type' && `Tipo: ${selectedType}`}
+            {mode === 'search' && `Resultados para "${search}"`}
+            {mode === 'filtered' && (
+              <>
+                {typesLoading ? 'Cargando...' : `${filteredIds.length} Pokémon · ${filterDescription}`}
+              </>
+            )}
           </p>
           <button
             onClick={handleClearFilters}
@@ -267,31 +320,39 @@ export default function Pokedex() {
         </div>
       )}
 
+      {/* Skeleton tipos cargando */}
+      {typesLoading && mode === 'filtered' && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="bg-white/5 rounded-xl h-48 animate-pulse" />
+          ))}
+        </div>
+      )}
+
       {/* Sin resultados */}
       {mode === 'search' && search && searchResults.length === 0 && !allNamesQuery.isLoading && (
         <p className="text-slate-500 font-mono text-sm">No hay Pokémon que coincidan con "{search}"</p>
       )}
+      {mode === 'filtered' && !typesLoading && filteredIds.length === 0 && (
+        <p className="text-slate-500 font-mono text-sm">Ningún Pokémon coincide con la combinación de filtros.</p>
+      )}
 
       {/* Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
-        {mode === 'search' && searchResults.map(item => (
-          <PokemonCardLoader key={item.name} nameOrId={item.name} />
-        ))}
+      {!typesLoading && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
+          {mode === 'search' && searchResults.map(item => (
+            <PokemonCardLoader key={item.name} nameOrId={item.name} />
+          ))}
+          {mode === 'filtered' && filteredIds.map(id => (
+            <PokemonCardLoader key={id} nameOrId={id} />
+          ))}
+          {mode === 'paginated' && allCards.map(card => (
+            <PokemonCard key={card.id} {...card} />
+          ))}
+        </div>
+      )}
 
-        {mode === 'category' && categoryIds.map(id => (
-          <PokemonCardLoader key={id} nameOrId={id} />
-        ))}
-
-        {mode === 'type' && typeIds.map(id => (
-          <PokemonCardLoader key={id} nameOrId={id} />
-        ))}
-
-        {mode === 'paginated' && allCards.map(card => (
-          <PokemonCard key={card.id} {...card} />
-        ))}
-      </div>
-
-      {/* Cargar más (solo modo paginado) */}
+      {/* Cargar más */}
       {mode === 'paginated' && !loading && (
         <div className="text-center mt-8">
           <p className="text-xs text-slate-500 font-mono mb-3">Mostrando {allCards.length} de 1025</p>

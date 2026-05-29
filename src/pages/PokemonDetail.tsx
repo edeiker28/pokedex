@@ -196,16 +196,26 @@ export default function PokemonDetail() {
             ))}
           </div>
 
-          <p className="font-mono text-gamer-purple text-xs tracking-widest uppercase mb-3">&gt; primeros_movimientos</p>
+          <p className="font-mono text-gamer-purple text-xs tracking-widest uppercase mb-3">&gt; movimientos_por_nivel</p>
           <div className="grid grid-cols-2 gap-2">
-            {pokemon.moves.slice(0, 10).map(m => (
-              <span
-                key={m.move.name}
-                className="text-xs px-2 py-1 rounded bg-white/5 text-slate-300 capitalize font-mono"
-              >
-                {m.move.name.replace(/-/g, ' ')}
-              </span>
-            ))}
+            {pokemon.moves
+              .flatMap(m => {
+                const detail = m.version_group_details?.find(d => d.move_learn_method.name === 'level-up')
+                if (!detail) return []
+                return [{ name: m.move.name, level: detail.level_learned_at }]
+              })
+              .sort((a, b) => a.level - b.level)
+              .slice(0, 16)
+              .map(m => (
+                <span
+                  key={m.name}
+                  className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-white/5 text-slate-300 font-mono"
+                >
+                  <span className="text-gamer-purple shrink-0 w-7 text-right">{m.level === 0 ? '—' : `${m.level}`}</span>
+                  <span className="capitalize truncate">{m.name.replace(/-/g, ' ')}</span>
+                </span>
+              ))
+            }
           </div>
         </motion.div>
       </div>
