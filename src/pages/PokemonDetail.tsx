@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { usePokemonDetail, usePokemonEvolution } from '../hooks/usePokemonDetail'
 import TypeBadge from '../components/TypeBadge'
@@ -7,12 +7,27 @@ import EvolutionChain from '../components/EvolutionChain'
 import { useTeamStore } from '../store/teamStore'
 import { getTypeColor } from '../constants/typeColors'
 
+const GENERATION_MAP: Record<string, string> = {
+  'generation-i':    'Gen I',
+  'generation-ii':   'Gen II',
+  'generation-iii':  'Gen III',
+  'generation-iv':   'Gen IV',
+  'generation-v':    'Gen V',
+  'generation-vi':   'Gen VI',
+  'generation-vii':  'Gen VII',
+  'generation-viii': 'Gen VIII',
+  'generation-ix':   'Gen IX',
+}
+
+const MAX_ID = 1025
+
 export default function PokemonDetail() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { data: pokemon, isLoading, isError } = usePokemonDetail(id!)
   const { team, addToTeam } = useTeamStore()
 
-  const { evolutionChain, loading: evoLoading } = usePokemonEvolution(
+  const { evolutionChain, speciesData, loading: evoLoading } = usePokemonEvolution(
     pokemon?.species?.url ?? ''
   )
 
@@ -36,6 +51,23 @@ export default function PokemonDetail() {
   const teamFull = team.length >= 6
   const label = pokemon.name.charAt(0).toUpperCase() + pokemon.name.slice(1)
 
+  // Datos de especie
+  const generation = speciesData ? GENERATION_MAP[speciesData.generation?.name] ?? speciesData.generation?.name : null
+  const isLegendary = speciesData?.is_legendary
+  const isMythical = speciesData?.is_mythical
+  const isBaby = speciesData?.is_baby
+  const genus = speciesData?.genera?.find((g: { language: { name: string }; genus: string }) => g.language.name === 'en')?.genus ?? null
+  const flavorText = speciesData?.flavor_text_entries
+    ?.find((e: { language: { name: string }; flavor_text: string }) => e.language.name === 'en')
+    ?.flavor_text
+    ?.replace(/\f/g, ' ')
+    ?? null
+
+  const rarityLabel = isMythical ? { text: '✨ Mítico', color: '#f95587' }
+    : isLegendary ? { text: '⭐ Legendario', color: '#f7d02c' }
+    : isBaby ? { text: '🍼 Baby', color: '#96d9d6' }
+    : null
+
   const handleAdd = () => {
     addToTeam({
       id: pokemon.id,
@@ -45,13 +77,36 @@ export default function PokemonDetail() {
     })
   }
 
+  const goTo = (targetId: number) => navigate(`/pokedex/${targetId}`)
+
   return (
     <div>
-      <Link to="/pokedex" className="font-mono text-gamer-purple text-sm hover:underline mb-6 inline-block">
-        ← Pokédex
-      </Link>
+      {/* Navegación superior */}
+      <div className="flex items-center justify-between mb-6">
+        <Link to="/pokedex" className="font-mono text-gamer-purple text-sm hover:underline">
+          ← Pokédex
+        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => goTo(pokemon.id - 1)}
+            disabled={pokemon.id <= 1}
+            className="px-3 py-1.5 rounded-lg border border-gamer-purple/40 text-gamer-purple-light text-sm font-mono hover:bg-gamer-purple/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ← #{String(pokemon.id - 1).padStart(3, '0')}
+          </button>
+          <span className="text-slate-600 font-mono text-xs">#{String(pokemon.id).padStart(3, '0')}</span>
+          <button
+            onClick={() => goTo(pokemon.id + 1)}
+            disabled={pokemon.id >= MAX_ID}
+            className="px-3 py-1.5 rounded-lg border border-gamer-purple/40 text-gamer-purple-light text-sm font-mono hover:bg-gamer-purple/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            #{String(pokemon.id + 1).padStart(3, '0')} →
+          </button>
+        </div>
+      </div>
 
       <div className="grid md:grid-cols-2 gap-8 mb-10">
+        {/* Lado izquierdo */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -62,21 +117,53 @@ export default function PokemonDetail() {
             boxShadow: `0 0 30px ${primaryColor}18`,
           }}
         >
-          <p className="font-mono text-gamer-purple text-sm mb-2">#{String(pokemon.id).padStart(3, '0')}</p>
-          <div
-            className="w-40 h-40 mx-auto mb-4 rounded-full flex items-center justify-center"
-            style={{ background: `${primaryColor}22`, boxShadow: `0 0 30px ${primaryColor}55` }}
-          >
-            <img src={sprite} alt={pokemon.name} className="w-36 h-36 object-contain" />
+          <p className="font-mono text-gamer-purple text-sm mb-1">#{String(pokemon.id).padStart(3, '0')}</p>
+
+          {/* Género y generación */}
+          <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
+            {genus && (
+              <span className="text-xs text-slate-400 font-mono italic">{genus}</span>
+            )}
+            {genus && generation && <span className="text-slate-600">·</span>}
+            {generation && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-mono"
+                style={{ background: '#7c3aed22', color: '#a78bfa', border: '1px solid #7c3aed44' }}>
+                {generation}
+              </span>
+            )}
+            {rarityLabel && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-mono font-bold"
+                style={{ background: `${rarityLabel.color}22`, color: rarityLabel.color, border: `1px solid ${rarityLabel.color}55` }}>
+                {rarityLabel.text}
+              </span>
+            )}
           </div>
+
+          <div
+            className="w-44 h-44 mx-auto mb-4 rounded-full flex items-center justify-center"
+            style={{ background: `${primaryColor}22`, boxShadow: `0 0 40px ${primaryColor}55` }}
+          >
+            <img src={sprite} alt={pokemon.name} className="w-40 h-40 object-contain" />
+          </div>
+
           <h1 className="text-3xl font-bold text-white mb-3">{label}</h1>
+
           <div className="flex gap-2 justify-center mb-4 flex-wrap">
             {pokemon.types.map(t => <TypeBadge key={t.type.name} type={t.type.name} size="md" />)}
           </div>
+
+          {/* Descripción Pokédex */}
+          {flavorText && (
+            <p className="text-xs text-slate-400 italic mb-4 px-2 leading-relaxed">
+              "{flavorText}"
+            </p>
+          )}
+
           <div className="flex gap-4 justify-center text-sm text-slate-400 mb-6">
             <span>📏 {pokemon.height / 10}m</span>
             <span>⚖️ {pokemon.weight / 10}kg</span>
           </div>
+
           <button
             onClick={handleAdd}
             disabled={isInTeam || teamFull}
@@ -87,6 +174,7 @@ export default function PokemonDetail() {
           </button>
         </motion.div>
 
+        {/* Lado derecho */}
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
           <p className="font-mono text-gamer-purple text-xs tracking-widest uppercase mb-4">&gt; base_stats</p>
           <div className="space-y-3 mb-8">
@@ -122,6 +210,7 @@ export default function PokemonDetail() {
         </motion.div>
       </div>
 
+      {/* Cadena de evolución */}
       {!evoLoading && evolutionChain && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -132,6 +221,24 @@ export default function PokemonDetail() {
           <EvolutionChain chain={evolutionChain.chain} />
         </motion.div>
       )}
+
+      {/* Navegación inferior */}
+      <div className="flex justify-between mt-8 pt-6 border-t border-white/5">
+        <button
+          onClick={() => goTo(pokemon.id - 1)}
+          disabled={pokemon.id <= 1}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gamer-purple/30 text-gamer-purple-light font-mono text-sm hover:bg-gamer-purple/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          ← #{String(pokemon.id - 1).padStart(3, '0')}
+        </button>
+        <button
+          onClick={() => goTo(pokemon.id + 1)}
+          disabled={pokemon.id >= MAX_ID}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gamer-purple/30 text-gamer-purple-light font-mono text-sm hover:bg-gamer-purple/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          #{String(pokemon.id + 1).padStart(3, '0')} →
+        </button>
+      </div>
     </div>
   )
 }

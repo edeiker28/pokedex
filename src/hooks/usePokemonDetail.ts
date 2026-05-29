@@ -31,5 +31,9 @@ export function usePokemonEvolution(speciesUrl: string) {
     staleTime: Infinity,
   })
 
-  return { evolutionChain: evolutionQuery.data, loading: speciesQuery.isLoading || evolutionQuery.isLoading }
+  return {
+    evolutionChain: evolutionQuery.data,
+    speciesData: speciesQuery.data ?? null,
+    loading: speciesQuery.isLoading || evolutionQuery.isLoading,
+  }
 }
