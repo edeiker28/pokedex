@@ -33,33 +33,33 @@ export default function PokemonCard({ id, name, types, sprite }: Props) {
     >
       <Link
         to={`/pokedex/${id}`}
-        className="group block rounded-xl p-4 text-center transition-all"
+        className="group block rounded-2xl p-5 text-center transition-all"
         style={{
-          background: `linear-gradient(135deg, ${primaryColor}18, #09090f)`,
-          border: `1px solid ${primaryColor}44`,
-          boxShadow: `0 0 10px ${primaryColor}11`,
+          background: `linear-gradient(135deg, ${primaryColor}22, #09090f)`,
+          border: `1px solid ${primaryColor}55`,
+          boxShadow: `0 0 16px ${primaryColor}18`,
         }}
       >
-        <p className="font-mono text-xs text-gamer-purple mb-1">#{number}</p>
+        <p className="font-mono text-xs text-gamer-purple mb-2">#{number}</p>
         <div
-          className="w-14 h-14 mx-auto mb-2 rounded-full flex items-center justify-center"
-          style={{ background: `${primaryColor}22`, boxShadow: `0 0 10px ${primaryColor}55` }}
+          className="w-24 h-24 mx-auto mb-3 rounded-full flex items-center justify-center"
+          style={{ background: `${primaryColor}22`, boxShadow: `0 0 18px ${primaryColor}66` }}
         >
           <img
             src={sprite}
             alt={name}
-            className="w-12 h-12 object-contain drop-shadow-lg"
+            className="w-20 h-20 object-contain drop-shadow-lg"
             loading="lazy"
           />
         </div>
-        <p className="text-sm font-semibold text-white mb-2">{label}</p>
-        <div className="flex gap-1 justify-center flex-wrap mb-3">
-          {types.map(t => <TypeBadge key={t} type={t} />)}
+        <p className="text-base font-bold text-white mb-2">{label}</p>
+        <div className="flex gap-1 justify-center flex-wrap mb-4">
+          {types.map(t => <TypeBadge key={t} type={t} size="md" />)}
         </div>
         <button
           onClick={handleAdd}
           disabled={isInTeam || teamFull}
-          className="text-xs px-3 py-1 rounded-lg transition-all w-full disabled:opacity-40 disabled:cursor-not-allowed"
+          className="text-xs px-3 py-1.5 rounded-lg transition-all w-full disabled:opacity-40 disabled:cursor-not-allowed font-medium"
           style={{
             background: isInTeam ? `${primaryColor}22` : `#7c3aed`,
             color: isInTeam ? primaryColor : 'white',

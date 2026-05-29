@@ -104,12 +104,19 @@ export default function Pokedex() {
     return []
   }, [selectedCategory])
 
-  // Resultados de búsqueda local (filtra por letra mientras escribes)
+  // Resultados de búsqueda local — filtra por nombre (letra a letra) o por número
   const searchResults = useMemo(() => {
     if (!search) return []
     const q = search.toLowerCase().trim()
+    const isNumber = /^\d+$/.test(q)
     return allNames
-      .filter(p => p.name.includes(q))
+      .filter(p => {
+        if (isNumber) {
+          const id = extractIdFromUrl(p.url)
+          return String(id).startsWith(q)
+        }
+        return p.name.includes(q)
+      })
       .slice(0, 40)
   }, [search, allNames])
 
@@ -253,7 +260,7 @@ export default function Pokedex() {
 
       {/* Skeleton */}
       {loading && mode === 'paginated' && allCards.length === 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
           {Array.from({ length: 20 }).map((_, i) => (
             <div key={i} className="bg-white/5 rounded-xl h-48 animate-pulse" />
           ))}
@@ -266,7 +273,7 @@ export default function Pokedex() {
       )}
 
       {/* Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
         {mode === 'search' && searchResults.map(item => (
           <PokemonCardLoader key={item.name} nameOrId={item.name} />
         ))}
