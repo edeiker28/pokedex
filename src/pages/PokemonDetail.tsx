@@ -31,7 +31,7 @@ export default function PokemonDetail() {
 
   const primaryType = pokemon.types[0]?.type.name
   const primaryColor = getTypeColor(primaryType)
-  const sprite = pokemon.sprites.other['official-artwork'].front_default || pokemon.sprites.front_default
+  const sprite = pokemon.sprites.other?.['official-artwork']?.front_default || pokemon.sprites.front_default
   const isInTeam = team.some(p => p.id === pokemon.id)
   const teamFull = team.length >= 6
   const label = pokemon.name.charAt(0).toUpperCase() + pokemon.name.slice(1)
@@ -102,7 +102,7 @@ export default function PokemonDetail() {
                 key={a.ability.name}
                 className="text-sm px-3 py-1 rounded-lg bg-gamer-purple/20 border border-gamer-purple/40 text-gamer-purple-light capitalize font-mono"
               >
-                {a.ability.name.replace('-', ' ')}
+                {a.ability.name.replace(/-/g, ' ')}
                 {a.is_hidden && <span className="text-xs text-slate-500 ml-1">(oculta)</span>}
               </span>
             ))}
@@ -115,7 +115,7 @@ export default function PokemonDetail() {
                 key={m.move.name}
                 className="text-xs px-2 py-1 rounded bg-white/5 text-slate-300 capitalize font-mono"
               >
-                {m.move.name.replace('-', ' ')}
+                {m.move.name.replace(/-/g, ' ')}
               </span>
             ))}
           </div>

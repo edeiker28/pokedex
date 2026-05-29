@@ -74,7 +74,7 @@ export default function Pokedex() {
         return [...prev, ...cards.filter(c => !ids.has(c.id))]
       })
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [listQuery.data, debouncedSearch, selectedType])
 
   const handleLoadMore = () => setOffset(prev => prev + LIMIT)
